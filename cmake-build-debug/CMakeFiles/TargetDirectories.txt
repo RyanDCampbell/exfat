@@ -1,0 +1,3 @@
+C:/Users/Ryan/CLionProjects/fsreader/cmake-build-debug/CMakeFiles/fsreader.dir
+C:/Users/Ryan/CLionProjects/fsreader/cmake-build-debug/CMakeFiles/edit_cache.dir
+C:/Users/Ryan/CLionProjects/fsreader/cmake-build-debug/CMakeFiles/rebuild_cache.dir
