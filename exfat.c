@@ -50,9 +50,8 @@ typedef struct EXFAT{
     uint8_t cluster_size;
 
     uint8_t  label_length;
-
-    uint16_t volume_label;
-
+    uint16_t unicode_volume_label;
+    char *ascii_volume_label;
 
 
     /* bitmap of free clusters */
@@ -108,9 +107,6 @@ static char *unicode2ascii( uint16_t *unicode_string, uint8_t length )
 
     if ( unicode_string != NULL && length > 0 )
     {
-
-        printf("Length: %d\n", length);
-
         /* +1 for a NULL terminator */
         ascii_string = calloc( sizeof(char), length + 1);
 
@@ -146,18 +142,7 @@ void commandInfo(exfat *volume){
 
     assert(volume != NULL);
 
-    /* int cluster_size_KB; */
-    char *name;
-
-   /* cluster_size_KB = (0x1 << volume->cluster_size)/kilobyte; */
-
-
-   //name = unicode2ascii(&volume->volume_label, volume->label_length);
-    name = unicode2ascii(&volume->volume_label, volume->label_length);
-
-
-    printf("Volume Name: %s\n", name);
-
+    printf("Volume Name: %s\n", volume->ascii_volume_label);
     printf("Cluster Count: %d\n", volume->cluster_count);
     printf("Root cluster: %d\n", volume->root_cluster);
     printf("Cluster heap offset: %d\n", volume->cluster_heap_offset);
@@ -188,20 +173,21 @@ exfat *readVolume(int volume_fd){
 
     assert(volume_fd > 0);
 
-    printf("\n\nReading the volume...\n\n\n");
+    printf("\n\nReading the volume...\n\n");
 
     /* Volume label, Serial Number, Free Space, Cluster Size */
 
     exfat *volume_data = malloc(sizeof (exfat));
+    unsigned long offset;
+    void *temp_label;
+
     assert(volume_data != NULL);
 
     if(volume_data != NULL){
 
-
         /* Read Boot Sector (first 512 bytes) */
 
         lseek(volume_fd, 0, SEEK_SET);
-
         lseek(volume_fd, 88, SEEK_CUR);
 
         read(volume_fd, (void *) &volume_data->cluster_heap_offset, 4);
@@ -219,17 +205,29 @@ exfat *readVolume(int volume_fd){
         read(volume_fd, (void *) &volume_data->sector_size, 1);
         read(volume_fd, (void *) &volume_data->cluster_size, 1);
 
-        unsigned long offset;
-        offset = ((volume_data->cluster_heap_offset * sectorsToBytes(volume_data, 1)) + ((0x1<< volume_data->sector_size)*(0x1 << volume_data->cluster_size))*(volume_data->root_cluster - 2));
 
+        /* Calculate the Offset to the Cluster Heap + the Offset of the Root Cluster */
+        offset = ((volume_data->cluster_heap_offset * sectorsToBytes(volume_data, 1)) +
+                ((0x1<< volume_data->sector_size)*(0x1 << volume_data->cluster_size))*(volume_data->root_cluster - 2));
 
+        /* Seek to the offset */
         lseek(volume_fd, (long)offset, SEEK_SET);
 
+        /* Read the length of the Volume Label */
         lseek(volume_fd, 1, SEEK_CUR);
-
         read(volume_fd, (void *) &volume_data->label_length, 1);
 
-       // read(volume_fd, (void *) &volume_data->volume_label, 22);
+        /* Read in the unicode volume label, storing it in a temporary label.  Convert to unicode, update the exfat struct label and free the temp label */
+        temp_label = malloc(sizeof (char)*23); /* Set to 23 due to 22 readable chars and + 1 for NULL terminator */
+        assert(temp_label != NULL);
+        read(volume_fd, (void *) temp_label, 22);
+        volume_data->ascii_volume_label = unicode2ascii(temp_label, volume_data->label_length);
+        free(temp_label);
+
+        /* Set and seek to the Cluster Heap Offset */
+        offset = (volume_data->cluster_heap_offset * sectorsToBytes(volume_data, 1));
+        lseek(volume_fd, (long)offset, SEEK_SET);
+
 
 
 
@@ -273,7 +271,7 @@ int main(int argc, char *argv[]) {
 
     char *command;
     char *volume_name;
-    char full_path[30];
+   // char full_path[30];
     int volume_fd;
     exfat *volume;
 
@@ -283,7 +281,7 @@ int main(int argc, char *argv[]) {
         volume_name = argv[1];
         command = argv[2];
 
-        printf("Reading Volume: %s, Command: %s\n", volume_name, command);
+        printf("\n\nReading Volume: %s, Command: %s\n", volume_name, command);
 
 //        strcpy(full_path, "/1sector-per-cluster/");
 //        strcat(full_path, volume_name);
@@ -305,7 +303,6 @@ int main(int argc, char *argv[]) {
                 volume = readVolume(volume_fd);
 
                 commandInfo(volume);
-
 
             } else {
                 printf("Unsupported command");
