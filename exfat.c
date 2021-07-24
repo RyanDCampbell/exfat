@@ -39,6 +39,10 @@
 #pragma pack(1)
 typedef struct EXFAT{
 
+
+    uint32_t fat_offset;
+
+
     uint32_t cluster_heap_offset;
     uint32_t cluster_count;
 
@@ -52,6 +56,8 @@ typedef struct EXFAT{
     uint8_t  label_length;
     uint16_t unicode_volume_label;
     char *ascii_volume_label;
+
+
 
 
     /* bitmap of free clusters */
@@ -142,6 +148,7 @@ void commandInfo(exfat *volume){
 
     assert(volume != NULL);
 
+    printf("FAT OFFSET: %d\n", volume->fat_offset);
     printf("Volume Name: %s\n", volume->ascii_volume_label);
     printf("Cluster Count: %d\n", volume->cluster_count);
     printf("Root cluster: %d\n", volume->root_cluster);
@@ -188,7 +195,12 @@ exfat *readVolume(int volume_fd){
         /* Read Boot Sector (first 512 bytes) */
 
         lseek(volume_fd, 0, SEEK_SET);
-        lseek(volume_fd, 88, SEEK_CUR);
+
+
+        lseek(volume_fd, 80, SEEK_CUR);
+        read(volume_fd,(void *) &volume_data->fat_offset, 4);
+
+        lseek(volume_fd, 88, SEEK_SET);
 
         read(volume_fd, (void *) &volume_data->cluster_heap_offset, 4);
         read(volume_fd, (void *) &volume_data->cluster_count, 4);
@@ -204,7 +216,6 @@ exfat *readVolume(int volume_fd){
         lseek(volume_fd, 4, SEEK_CUR);
         read(volume_fd, (void *) &volume_data->sector_size, 1);
         read(volume_fd, (void *) &volume_data->cluster_size, 1);
-
 
         /* Calculate the Offset to the Cluster Heap + the Offset of the Root Cluster */
         offset = ((volume_data->cluster_heap_offset * sectorsToBytes(volume_data, 1)) +
@@ -228,7 +239,23 @@ exfat *readVolume(int volume_fd){
         offset = (volume_data->cluster_heap_offset * sectorsToBytes(volume_data, 1));
         lseek(volume_fd, (long)offset, SEEK_SET);
 
-
+        //BITMAP HINTS
+        /*
+         * 3.1.10 FirstClusterOfRootDirectory Field
+         * The FirstClusterOfRootDirectory field shall contain the cluster
+         * index of the first cluster of the root directory. Implementations
+         * should make every effort to place the first cluster of the root
+         * directory in the first non-bad cluster after the clusters the
+         * Allocation Bitmap and Up-case Table consume.
+         *
+         * 7.1 Allocation Bitmap Directory Entry
+         * In the exFAT file system, a FAT does not describe the allocation
+         * state of clusters; rather, an Allocation Bitmap does. Allocation
+         * Bitmaps exist in the Cluster Heap (see Section 7.1.5) and have
+         * corresponding critical primary directory entries in the root
+         * directory (see Table 20).
+         *
+         */
 
 
 
