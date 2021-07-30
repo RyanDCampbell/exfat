@@ -41,9 +41,10 @@ typedef struct EXFAT{
 
 
     uint32_t fat_offset;
+    uint32_t fat_length;
 
 
-    uint32_t cluster_heap_offset;
+    uint32_t cluster_heap_offset;  /* in # of sectors */
     uint32_t cluster_count;
 
     uint32_t root_cluster;
@@ -53,9 +54,12 @@ typedef struct EXFAT{
     uint8_t sector_size;
     uint8_t cluster_size;
 
+    uint8_t number_of_fats;
+
     uint8_t  label_length;
     uint16_t unicode_volume_label;
     char *ascii_volume_label;
+    uint8_t  entry_type;
 
 
 
@@ -144,12 +148,15 @@ static char *unicode2ascii( uint16_t *unicode_string, uint8_t length )
 // INPUT PARAMETERS:
 //     Takes in a pointer to an exfat struct.
 //------------------------------------------------------*/
-void commandInfo(exfat *volume){
+void displayMetadata(exfat *volume){
 
     assert(volume != NULL);
 
     printf("FAT OFFSET: %d\n", volume->fat_offset);
+    printf("Fat length %d\n", volume->fat_length);
+    printf("Number of Fats: %d\n", volume->number_of_fats);
     printf("Volume Name: %s\n", volume->ascii_volume_label);
+    printf("Entry Type: %d\n", volume->entry_type);
     printf("Cluster Count: %d\n", volume->cluster_count);
     printf("Root cluster: %d\n", volume->root_cluster);
     printf("Cluster heap offset: %d\n", volume->cluster_heap_offset);
@@ -159,6 +166,41 @@ void commandInfo(exfat *volume){
 
 }
 
+/*------------------------------------------------------
+// commandInfo
+//
+// PURPOSE: Prints information about an exfat volume when
+// the user enters the "info" command.  Information that is
+// displayed includes; volume label, volume serial number,
+// free space on volume in KB, and the cluster size in both
+// sectors and in  KB.
+// INPUT PARAMETERS:
+//     Takes in a pointer to an exfat struct.
+//------------------------------------------------------*/
+void commandInfo(exfat *volume){
+
+    assert(volume != NULL);
+
+    printf("\n\nVolume label: %s\n", volume->ascii_volume_label);
+    printf("Volume Serial Number: %u\n", volume->serial_number);
+    printf("Free space: placeHolder\n");
+    printf("Cluster Size: %d sector(s), %d bytes\n", (0x1 << volume->cluster_size), clustersToBytes(volume, 1));
+
+//    printf("Entry Type: %d\n", volume->entry_type);
+//    printf("Cluster Count: %d\n", volume->cluster_count);
+//    printf("Root cluster: %d\n", volume->root_cluster);
+//    printf("Cluster heap offset: %d\n", volume->cluster_heap_offset);
+//    printf("Cluster Size: %d sector(s), %d bytes\n", (0x1 << volume->cluster_size), clustersToBytes(volume, 1));
+//    printf("Sector Size: %d\n", sectorsToBytes(volume, 1));
+
+}
+
+/* Calculate the Offset to the Cluster Heap + the Offset of the Root Cluster */
+unsigned long rootOffset(exfat *volume_data){
+
+    return ((volume_data->cluster_heap_offset * sectorsToBytes(volume_data, 1)) +
+            ((0x1<< volume_data->sector_size)*(0x1 << volume_data->cluster_size))*(volume_data->root_cluster - 2));
+}
 
 /*------------------------------------------------------
 // readVolume
@@ -199,8 +241,8 @@ exfat *readVolume(int volume_fd){
 
         lseek(volume_fd, 80, SEEK_CUR);
         read(volume_fd,(void *) &volume_data->fat_offset, 4);
-
-        lseek(volume_fd, 88, SEEK_SET);
+        read(volume_fd, (void *) &volume_data->fat_length, 4);
+       // lseek(volume_fd, 88, SEEK_SET);
 
         read(volume_fd, (void *) &volume_data->cluster_heap_offset, 4);
         read(volume_fd, (void *) &volume_data->cluster_count, 4);
@@ -217,15 +259,17 @@ exfat *readVolume(int volume_fd){
         read(volume_fd, (void *) &volume_data->sector_size, 1);
         read(volume_fd, (void *) &volume_data->cluster_size, 1);
 
-        /* Calculate the Offset to the Cluster Heap + the Offset of the Root Cluster */
-        offset = ((volume_data->cluster_heap_offset * sectorsToBytes(volume_data, 1)) +
-                ((0x1<< volume_data->sector_size)*(0x1 << volume_data->cluster_size))*(volume_data->root_cluster - 2));
+        read(volume_fd, (void *) &volume_data->number_of_fats, 1);
 
+        /* Calculate the Offset to the Cluster Heap + the Offset of the Root Cluster */
+        offset = rootOffset(volume_data);
         /* Seek to the offset */
         lseek(volume_fd, (long)offset, SEEK_SET);
 
         /* Read the length of the Volume Label */
-        lseek(volume_fd, 1, SEEK_CUR);
+        //lseek(volume_fd, 1, SEEK_CUR);
+        read(volume_fd, (void *) &volume_data->entry_type,1);
+
         read(volume_fd, (void *) &volume_data->label_length, 1);
 
         /* Read in the unicode volume label, storing it in a temporary label.  Convert to unicode, update the exfat struct label and free the temp label */
@@ -236,6 +280,8 @@ exfat *readVolume(int volume_fd){
         free(temp_label);
 
         /* Set and seek to the Cluster Heap Offset */
+        //offset = (volume_data->cluster_heap_offset * sectorsToBytes(volume_data, 1));
+
         offset = (volume_data->cluster_heap_offset * sectorsToBytes(volume_data, 1));
         lseek(volume_fd, (long)offset, SEEK_SET);
 
@@ -258,13 +304,48 @@ exfat *readVolume(int volume_fd){
          */
 
 
+        int target = 129;
+        int result = 0;
+        int numfound = 0;
+        int found = 0;
+        int bmap_flag =-1;
+
+        /* Search through the cluster in increments of sizeOf cluster until we find the FAT */
+        for(int i = 0; i < volume_data->cluster_count && found == 0; i++){
+
+            read(volume_fd, (void *) &result, 1);
+            read(volume_fd, (void *) &bmap_flag, 1);
+
+            if(result == target){
+                printf("\nALLOCATION BITMAP FOUND %d\n", numfound);
+                numfound++;
+            }
+
+            lseek(volume_fd, 31, SEEK_CUR);
+            lseek(volume_fd, 32, SEEK_CUR);
+            lseek(volume_fd, 32, SEEK_CUR);
+
+        }
+
+
+
+        printf("result:%d\n", result);
+        printf("flag:%d\n", bmap_flag);
+
+
+
+
+
+
+
+
+
+
+
 
     }
     return volume_data;
 }
-
-
-
 
 
 
@@ -328,6 +409,8 @@ int main(int argc, char *argv[]) {
                 /* Able to open file and the command is valid, do work */
 
                 volume = readVolume(volume_fd);
+
+                displayMetadata(volume);
 
                 commandInfo(volume);
 
