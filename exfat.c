@@ -21,6 +21,8 @@
 #include <string.h>
 #include <assert.h>
 
+#include "list.h"
+
 #define KILOBYTE_SIZE 1024
 
 /*
@@ -39,10 +41,8 @@
 #pragma pack(1)
 typedef struct EXFAT{
 
-
     uint32_t fat_offset;
     uint32_t fat_length;
-
 
     uint32_t cluster_heap_offset;  /* in # of sectors */
     uint32_t cluster_count;
@@ -60,6 +60,11 @@ typedef struct EXFAT{
     uint16_t unicode_volume_label;
     char *ascii_volume_label;
     uint8_t  entry_type;
+
+    /* This is the index of the first cluster of the cluster chain
+ * as the FAT describes (Look at the corresponding entry in the FAT,
+ * to build the cluster chain) */
+    uint32_t first_bitmap_cluster;
 
 
 
@@ -157,6 +162,7 @@ void displayMetadata(exfat *volume){
     printf("Number of Fats: %d\n", volume->number_of_fats);
     printf("Volume Name: %s\n", volume->ascii_volume_label);
     printf("Entry Type: %d\n", volume->entry_type);
+    printf("First Bitmap Cluster: %d\n", volume->first_bitmap_cluster);
     printf("Cluster Count: %d\n", volume->cluster_count);
     printf("Root cluster: %d\n", volume->root_cluster);
     printf("Cluster heap offset: %d\n", volume->cluster_heap_offset);
@@ -202,6 +208,26 @@ unsigned long rootOffset(exfat *volume_data){
             ((0x1<< volume_data->sector_size)*(0x1 << volume_data->cluster_size))*(volume_data->root_cluster - 2));
 }
 
+
+
+
+int numSetBits(uint32_t value){
+
+    int result = 0;
+
+    for(int i = 0; i < 32; i++){
+
+        if((value & 1) == 1){
+            result ++;
+        }
+        value = value >> 1;
+    }
+    return result;
+}
+
+
+
+
 /*------------------------------------------------------
 // readVolume
 //
@@ -238,7 +264,6 @@ exfat *readVolume(int volume_fd){
 
         lseek(volume_fd, 0, SEEK_SET);
 
-
         lseek(volume_fd, 80, SEEK_CUR);
         read(volume_fd,(void *) &volume_data->fat_offset, 4);
         read(volume_fd, (void *) &volume_data->fat_length, 4);
@@ -261,14 +286,22 @@ exfat *readVolume(int volume_fd){
 
         read(volume_fd, (void *) &volume_data->number_of_fats, 1);
 
+
         /* Calculate the Offset to the Cluster Heap + the Offset of the Root Cluster */
         offset = rootOffset(volume_data);
         /* Seek to the offset */
         lseek(volume_fd, (long)offset, SEEK_SET);
 
+
+
+
+
+
+
         /* Read the length of the Volume Label */
         //lseek(volume_fd, 1, SEEK_CUR);
         read(volume_fd, (void *) &volume_data->entry_type,1);
+        //printf("\n\nHEX: %x\n\n", volume_data->entry_type);
 
         read(volume_fd, (void *) &volume_data->label_length, 1);
 
@@ -276,77 +309,61 @@ exfat *readVolume(int volume_fd){
         temp_label = malloc(sizeof (char)*23); /* Set to 23 due to 22 readable chars and + 1 for NULL terminator */
         assert(temp_label != NULL);
         read(volume_fd, (void *) temp_label, 22);
+        lseek(volume_fd, 8, SEEK_CUR);
+
         volume_data->ascii_volume_label = unicode2ascii(temp_label, volume_data->label_length);
         free(temp_label);
 
-        /* Set and seek to the Cluster Heap Offset */
-        //offset = (volume_data->cluster_heap_offset * sectorsToBytes(volume_data, 1));
-
-        offset = (volume_data->cluster_heap_offset * sectorsToBytes(volume_data, 1));
-        lseek(volume_fd, (long)offset, SEEK_SET);
-
-        //BITMAP HINTS
-        /*
-         * 3.1.10 FirstClusterOfRootDirectory Field
-         * The FirstClusterOfRootDirectory field shall contain the cluster
-         * index of the first cluster of the root directory. Implementations
-         * should make every effort to place the first cluster of the root
-         * directory in the first non-bad cluster after the clusters the
-         * Allocation Bitmap and Up-case Table consume.
-         *
-         * 7.1 Allocation Bitmap Directory Entry
-         * In the exFAT file system, a FAT does not describe the allocation
-         * state of clusters; rather, an Allocation Bitmap does. Allocation
-         * Bitmaps exist in the Cluster Heap (see Section 7.1.5) and have
-         * corresponding critical primary directory entries in the root
-         * directory (see Table 20).
-         *
-         */
+        // In position to read the next directoryEntry.
 
 
-        int target = 129;
-        int result = 0;
-        int numfound = 0;
-        int found = 0;
-        int bmap_flag =-1;
+        int volume;
 
-        /* Search through the cluster in increments of sizeOf cluster until we find the FAT */
-        for(int i = 0; i < volume_data->cluster_count && found == 0; i++){
+        read(volume_fd, (void *) &volume_data->entry_type,1);
+        read(volume_fd, (void *) &volume, 1);
 
-            read(volume_fd, (void *) &result, 1);
-            read(volume_fd, (void *) &bmap_flag, 1);
+//        printf("\n\nHEX: %x\n\n", volume_data->entry_type);
+//        printf("\n\nShould be 0: %d\n\n", volume);
 
-            if(result == target){
-                printf("\nALLOCATION BITMAP FOUND %d\n", numfound);
-                numfound++;
+        lseek(volume_fd, 18, SEEK_CUR);
+
+        /* This is the index of the first cluster of the cluster chain
+         * as the FAT describes (Look at the corresponding entry in the FAT,
+         * to build the cluster chain) */
+        read(volume_fd, (void *) &volume_data->first_bitmap_cluster, 4);
+
+
+
+        offset = volume_data->fat_offset * sectorsToBytes(volume_data, 1);
+
+
+        //printf("Offset:%ld\n", offset);
+
+        lseek(volume_fd, offset, SEEK_SET);
+        lseek(volume_fd, 8, SEEK_CUR);
+
+        /* Create and build the allocation bitmap table cluster chain */
+
+        List *bitmap_cluster_chain = malloc(sizeof (List));
+        int next_cluster;
+        int cluster_number = 0;
+        while(next_cluster != -1){
+            read(volume_fd, (void *) &next_cluster, 4 );
+
+            /* Ensures the end of cluster chain marker is not added to the list */
+            if(next_cluster != -1){
+                insert(bitmap_cluster_chain, next_cluster);
+                cluster_number++;
             }
-
-            lseek(volume_fd, 31, SEEK_CUR);
-            lseek(volume_fd, 32, SEEK_CUR);
-            lseek(volume_fd, 32, SEEK_CUR);
-
         }
 
-
-
-        printf("result:%d\n", result);
-        printf("flag:%d\n", bmap_flag);
-
-
-
-
-
-
-
-
-
+        //printList(bitmap_cluster_chain);
 
 
 
     }
     return volume_data;
 }
-
 
 
 

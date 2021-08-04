@@ -2,7 +2,7 @@
 CC = gcc
 CFLAGS = -Wall # -Wpedantic -Wextra -Werror
 # LDFLAGS = -lpthread
-OBJFILES = exfat.o
+OBJFILES = exfat.o list.o
 TARGET = exfat
 
 all: $(TARGET)
