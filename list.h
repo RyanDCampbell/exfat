@@ -7,7 +7,7 @@
 
  typedef struct Node {
 
-    int data;
+    unsigned int data;
     struct Node *next_node;
 
 } Node ;
@@ -15,16 +15,16 @@
 typedef struct List {
 
     Node *first_node;
-    int size;
+    unsigned int size;
 
 } List ;
 
 
 List *createList();
 
-void insert(List *list, int data);
+void insert(List *list, unsigned int data);
 
-int getData(List *list);
+unsigned int getData(List *list);
 
 void printList(List *list);
 

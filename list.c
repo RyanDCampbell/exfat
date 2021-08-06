@@ -1,13 +1,27 @@
+/*-----------------------------------------
+// NAME: Ryan Campbell
+// STUDENT NUMBER: 7874398
+// COURSE: COMP 3430, SECTION: A01
+// INSTRUCTOR: Franklin Bristow
+// ASSIGNMENT: assignment #4
 //
-// Created by Ryan on 7/31/2021.
-//
-
+// REMARKS: Implement a List data structure that
+// employs a FIFO policy.
+//-----------------------------------------*/
 #include <stdlib.h>
 #include <assert.h>
 #include  <stdio.h>
 
 #include "list.h"
 
+/*------------------------------------------------------
+// createList
+//
+// PURPOSE: Initializes and returns a new List data
+// structure that uses a FIFO policy.
+// OUTPUT PARAMETERS:
+//     Returns a pointer to the newly allocated List
+//------------------------------------------------------*/
 List *createList(){
 
     List *newList = malloc(sizeof (List));
@@ -18,8 +32,19 @@ List *createList(){
 }
 
 
-/* Adds the new item to the end of the list */
-void insert( List *list, int data){
+/*------------------------------------------------------
+// insert
+//
+// PURPOSE: Given a pointer to a List data structure,
+// along with the data to insert (represented as an
+// unsigned int), this method adds the data to the end
+// of the list.  Using a FIFO strategy.
+// INPUT PARAMETERS:
+//    Takes in a pointer to a List along with unsigned
+// int, which is the data to be added to the end of the
+// List.
+//------------------------------------------------------*/
+void insert( List *list, unsigned int data){
 
     Node *curr_node;
     /*If we are adding to an empty list*/
@@ -50,10 +75,22 @@ void insert( List *list, int data){
 }
 
 
-/* Returns the first item in the list FIFO */
-int getData(List *list){
+/*------------------------------------------------------
+// getData
+//
+// PURPOSE: Given a pointer to a List, this method returns
+// the first data item from the list, and does the appropriate
+// upkeep, such as de-increment the number of data items in the
+// List.
+// INPUT PARAMETERS:
+//    Takes in a pointer a List data structure.
+// OUTPUT PARAMETERS:
+//     Returns an unsigned int with the value of the data
+// item removed from the list.
+//------------------------------------------------------*/
+unsigned int getData(List *list){
 
-    int result = -1;
+    unsigned int result = -1;
 
     if(list->size == 1){
 
@@ -70,24 +107,29 @@ int getData(List *list){
     return result;
 }
 
+/*------------------------------------------------------
+// printList
+//
+// PURPOSE: Given a pointer to a List, this method traverses
+// the list, printing the contents of each data item neatly to
+// the display.
+// INPUT PARAMETERS:
+//    Takes in a pointer to a list data structure to print.
+//------------------------------------------------------*/
 void printList(List *list){
 
     Node *curr_node;
 
-    printf("\n\n******************Printing the list...************\n");
+    printf("\n\n****************** Printing the list... ************\n");
     printf("List size: %d\n", list->size);
     curr_node = list->first_node;
-    int item_number = 0;
+    unsigned int item_number = 0;
     while(curr_node != NULL){
 
         printf("Item #%d : %d\n", item_number , curr_node->data);
         curr_node = curr_node->next_node;
         item_number++;
     }
-
-
-
-
-
+    printf("\n****************** Finished printing the list ************\n");
 
 }

@@ -6,9 +6,9 @@
 // INSTRUCTOR: Franklin Bristow
 // ASSIGNMENT: assignment #4
 //
-// REMARKS: Implement a Task struct along with a
-// Queue-like structure created out of an array
-// of Task struct pointers.
+// REMARKS: Implement a File System reader
+// that supports the exfat file system. Implements
+// support for 3 commands, info, list, and get.
 //-----------------------------------------*/
 
 #include <stdio.h>
@@ -24,17 +24,6 @@
 #include "list.h"
 
 #define KILOBYTE_SIZE 1024
-
-/*
- * The data heap itself is organized by clusters,
- * which may or may not be the same size as a sector.
- * Make sure that you’re using the right units in the
- * right regions! You should consider writing a utility
- * function or macro that quickly converts from cluster
- * number to bytes or from sector number to bytes.
- */
-
-/* bitmap for allocation structure */
 
 
 #pragma pack(push)
@@ -66,9 +55,6 @@ typedef struct EXFAT{
  * to build the cluster chain) */
     uint32_t first_bitmap_cluster;
 
-
-
-
     /* bitmap of free clusters */
 
     /* uint8_t cluster size */
@@ -77,6 +63,18 @@ typedef struct EXFAT{
 #pragma pack(pop)
 
 
+/*------------------------------------------------------
+// sectorsToBytes
+//
+// PURPOSE: Given a pointer to an exfat volume struct and
+// an int of sectors desired, this method calculates the
+// number of bytes used by x sectors.
+// INPUT PARAMETERS:
+//    Takes in a pointer to an exfat volume struct and
+// an int of sectors desired.
+// OUTPUT PARAMETERS:
+//     Returns the number of bytes used by x sectors.
+//------------------------------------------------------*/
 int sectorsToBytes(exfat *volume, int number_of_sectors){
 
     assert(volume != NULL);
@@ -85,6 +83,18 @@ int sectorsToBytes(exfat *volume, int number_of_sectors){
     return ((0x1 << volume->sector_size) * number_of_sectors);
 }
 
+/*------------------------------------------------------
+// clustersToBytes
+//
+// PURPOSE: Given a pointer to an exfat volume struct and
+// an int of sectors desired, this method calculates the
+// number of bytes used by x clusters.
+// INPUT PARAMETERS:
+//    Takes in a pointer to an exfat volume struct and
+// an int of cluster desired.
+// OUTPUT PARAMETERS:
+//     Returns the number of bytes used by x clusters.
+//------------------------------------------------------*/
 int clustersToBytes(exfat *volume, int number_of_clusters){
 
     assert(volume != NULL);
@@ -208,22 +218,151 @@ unsigned long rootOffset(exfat *volume_data){
             ((0x1<< volume_data->sector_size)*(0x1 << volume_data->cluster_size))*(volume_data->root_cluster - 2));
 }
 
-
-
-
-int numSetBits(uint32_t value){
+/*------------------------------------------------------
+// numUnsetBits
+//
+// PURPOSE: Given an uint_32 value, this method counts the
+// number of unset bits by performing a uniary & operation
+// on the passed value, and 1. If the result == 0, we
+// know the bit is unset.  We then bitshift and repeat to
+// count the remaining bits.
+// INPUT PARAMETERS:
+//     Takes in an uint_32 value to count how many bits
+// are unset.
+// OUTPUT PARAMETERS:
+//     Returns an unsigned int equal to the number of unset
+// bits in the passed uint_32 value.
+//------------------------------------------------------*/
+unsigned int numUnsetBits(uint32_t value){
 
     int result = 0;
 
     for(int i = 0; i < 32; i++){
 
-        if((value & 1) == 1){
+        if((value & 1) == 0){
             result ++;
         }
         value = value >> 1;
     }
     return result;
 }
+
+
+/*------------------------------------------------------
+// buildClusterChain
+//
+// PURPOSE: Given a file descriptor to an exfat volume,
+// along with a cluster head index to the cluster that
+// is the first in cluster of a cluster chain to build.
+// This method builds a list of cluster numbers that
+// makeup a cluster chain for the desired index location.
+// INPUT PARAMETERS:
+//     Takes in a file descriptor to an exfat volume,
+// along with an unsigned int that is the index of the
+// first cluster index of the cluster chain to be built.
+// OUTPUT PARAMETERS:
+//     Returns aa pointer to the cluster chain List.
+//------------------------------------------------------*/
+List *buildClusterChain(int volume_fd, unsigned int cluster_heap_index){
+
+    List *cluster_chain = malloc(sizeof (List));
+
+    insert(cluster_chain, cluster_heap_index);
+
+    int next_cluster = 0;
+    int cluster_number = 0;
+    int curr_cluster = 0;
+    while(next_cluster != -1){
+        read(volume_fd, (void *) &next_cluster, 4 );
+
+
+        printf("\n%d\n", next_cluster);
+
+        /* Ensures the end of cluster chain marker is not added to the list */
+        if(next_cluster != -1){
+            insert(cluster_chain, next_cluster);
+            cluster_number++;
+        }
+    }
+
+    printList(cluster_chain);
+
+    return cluster_chain;
+}
+
+
+
+
+/*------------------------------------------------------
+// calculateFreeSpace
+//
+// PURPOSE: Given a file descriptor to an exfat volume,
+// along with a pointer to an exfat volume struct and
+// a pointer to the bitmap cluster chain, this method
+// calculated the number of free KB of memory left on the
+// volume.
+// INPUT PARAMETERS:
+//     Takes in a file descriptor to an exfat volume,
+// along with a pointer to an exfat volume struct and
+// a pointer to the bitmap cluster chain.
+// volume.
+// OUTPUT PARAMETERS:
+//     Returns an unsigned long equal to the number of free
+// KB in the exfat volume.
+//------------------------------------------------------*/
+unsigned long calculateFreeSpace(int volume_fd, exfat *volume, List *bitmap_cluster_chain){
+
+
+    printf("\n\nCalculating free space...\n\n");
+
+    unsigned long total_unset_bits = 0;
+    unsigned long offset;
+    int current_cluster;
+
+    unsigned int temp;
+
+
+    while(bitmap_cluster_chain->size > 0){
+
+        printf("\n\nNew Cluster: \n\n");
+
+        current_cluster = clustersToBytes(volume, 1);
+
+//        offset =  (volume->cluster_heap_offset * sectorsToBytes(volume, 1) +
+//                (getData(bitmap_cluster_chain) * clustersToBytes(volume,1)));
+
+        /*Calculate the offset to the heap in number of bytes */
+        offset =  (volume->cluster_heap_offset * sectorsToBytes(volume, 1));
+
+        printf("Cluster Size %d\n",(0x1 << volume->cluster_size)*(0x1<< volume->sector_size)*(getData(bitmap_cluster_chain)));
+
+        offset += (0x1<< volume->sector_size)*(0x1 << volume->cluster_size)*((getData(bitmap_cluster_chain)-2));
+
+        lseek(volume_fd, (long) offset, SEEK_SET);
+
+        while(current_cluster >= 4){
+
+            read(volume_fd, &temp ,4);
+
+            printf("TEMP:%d\n", temp);
+
+
+            total_unset_bits += numUnsetBits(temp);
+            temp = 0;
+
+            current_cluster-= 4;
+        }
+
+    }
+
+    printf("\n\nFree Clusters: %lu\n\n", total_unset_bits);
+    printf("\nFree Space KB: %lu\n\n", total_unset_bits * clustersToBytes(volume, 1)/KILOBYTE_SIZE);
+
+
+    return 0;
+}
+
+
 
 
 
@@ -337,6 +476,9 @@ exfat *readVolume(int volume_fd){
         offset = volume_data->fat_offset * sectorsToBytes(volume_data, 1);
 
 
+
+
+
         //printf("Offset:%ld\n", offset);
 
         lseek(volume_fd, offset, SEEK_SET);
@@ -344,24 +486,13 @@ exfat *readVolume(int volume_fd){
 
         /* Create and build the allocation bitmap table cluster chain */
 
-        List *bitmap_cluster_chain = malloc(sizeof (List));
-        int next_cluster;
-        int cluster_number = 0;
-        while(next_cluster != -1){
-            read(volume_fd, (void *) &next_cluster, 4 );
 
-            /* Ensures the end of cluster chain marker is not added to the list */
-            if(next_cluster != -1){
-                insert(bitmap_cluster_chain, next_cluster);
-                cluster_number++;
-            }
-        }
+        List *bitmap_cluster_chain = buildClusterChain(volume_fd, volume_data->first_bitmap_cluster);
 
-        //printList(bitmap_cluster_chain);
-
-
+        calculateFreeSpace(volume_fd, volume_data, bitmap_cluster_chain);
 
     }
+
     return volume_data;
 }
 
@@ -375,20 +506,20 @@ exfat *readVolume(int volume_fd){
 /*------------------------------------------------------
 // main
 //
-// PURPOSE: this is the scheduler's main that is run when the
-// scheduler is executed. It reads the arguments passed to the
-// program by the user, looking to accept the number of desired
-// CPUs to utilize, along with which scheduling policy to employ.
-// it then reads the tasks from the task file, and sets up an
-// array of structs of type Task.
+// PURPOSE: this is the exfat file system reader's main
+// that is run when the program is executed. It reads the
+// arguments passed to the program by the user, looking to
+// accept the name of the volume to read (including the .exfat
+// extension) along with the command to run.  It then calls
+// the appropriate methods to populate an exfat struct, and
+// performed the desired command if it is supported.
 //
 // INPUT PARAMETERS:
 //     Takes in arguments from standard I/O given by the
 // user.  The program requires 2 arguments to be passed, the
-// first argument is the desired number of CPUs to utilize
-// in the simulation.  The second argument is which scheduling
-// policy to employ.  The 2 options of scheduling policies are:
-// sjf, and mlfq.
+// first argument is the name of the exfat volume to be read.
+// The second argument is the name of the command that the
+// user would like ot run.
 // OUTPUT PARAMETERS:
 //     Returns 0 if the program finishes successfully.
 //------------------------------------------------------*/
@@ -407,12 +538,6 @@ int main(int argc, char *argv[]) {
         command = argv[2];
 
         printf("\n\nReading Volume: %s, Command: %s\n", volume_name, command);
-
-//        strcpy(full_path, "/1sector-per-cluster/");
-//        strcat(full_path, volume_name);
-
-//        printf("Full path: %s\n", full_path);
-//
 
         volume_fd = open(volume_name, O_RDONLY);
 
