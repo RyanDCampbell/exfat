@@ -42,7 +42,7 @@ List *createList(){
 // INPUT PARAMETERS:
 //    Takes in a pointer to a List along with unsigned
 // int, which is the data to be added to the end of the
-// List.
+// List. Negative values are undefined in this structure.
 //------------------------------------------------------*/
 void insert( List *list, unsigned int data){
 
@@ -86,14 +86,14 @@ void insert( List *list, unsigned int data){
 //    Takes in a pointer a List data structure.
 // OUTPUT PARAMETERS:
 //     Returns an unsigned int with the value of the data
-// item removed from the list.
+// item removed from the list.  If the list is empty, returns -1
+// as negatives are undefined in this structure.
 //------------------------------------------------------*/
 unsigned int getData(List *list){
 
     unsigned int result = -1;
 
     if(list->size == 1){
-
         result = list->first_node->data;
         list->first_node = NULL;
         list->size--;
