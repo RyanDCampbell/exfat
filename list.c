@@ -121,7 +121,7 @@ void printList(List *list){
     Node *curr_node;
 
     printf("\n\n****************** Printing the list... ************\n");
-    printf("List size: %d\n", list->size);
+    printf("List size: %d\n\n", list->size);
     curr_node = list->first_node;
     unsigned int item_number = 0;
     while(curr_node != NULL){
