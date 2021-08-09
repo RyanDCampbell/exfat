@@ -331,7 +331,6 @@ List *buildClusterChain(int volume_fd, exfat *volume, unsigned int cluster_heap_
 }
 
 
-
 /*------------------------------------------------------
 // calculateFreeSpace
 //
@@ -433,6 +432,25 @@ void commandGet(exfat *volume){
 }
 
 
+
+
+unsigned int offsetUpkeep(int volume_fd, exfat *volume, List *cluster_chain, unsigned int bytes_read){
+
+    unsigned int bytes = bytes_read;
+    unsigned long offset;
+
+    if(bytes_read >= clustersToBytes(volume,1)){
+
+        offset =  ((volume->cluster_heap_offset * sectorsToBytes(volume, 1)) +
+                ((0x1<< volume->sector_size)*(0x1 << volume->cluster_size))*(getData(cluster_chain)-2));
+        lseek(volume_fd, offset, SEEK_SET);
+        bytes = 0;
+    }
+    return bytes;
+}
+
+
+
 void commandList(int volume_fd, exfat *volume){
 
     /* This will seek back to the directory entry after the bitmap allocation table entry */
@@ -440,13 +458,7 @@ void commandList(int volume_fd, exfat *volume){
     offset += ENTRY_SIZE * 2; /* Seeks past the volume Name and allocation bitmap entries */
     void *temp_label;
 
-
-
-
-    int bytes_read = 0;
-
-
-
+    unsigned int bytes_read = 0;
 
     uint8_t file_name_length;
     uint32_t file_first_cluster;
@@ -456,14 +468,17 @@ void commandList(int volume_fd, exfat *volume){
     List *root = buildClusterChain(volume_fd, volume, volume->root_cluster);
     //printList(root);
 
+
     getData(root);  /* Pop the first cluster because we are already in it and won't be needing it */
 
-    lseek(volume_fd, offset, SEEK_SET);
+    lseek(volume_fd, (long) offset, SEEK_SET);
 
 
     while(volume->entry_type != 0){
         read(volume_fd, (void * ) &volume->entry_type, 1);
         bytes_read++;
+        bytes_read = offsetUpkeep(volume_fd, volume, root, bytes_read);
+
         printf("HEX %x\n", volume->entry_type);
 
 
@@ -473,23 +488,35 @@ void commandList(int volume_fd, exfat *volume){
 
             lseek(volume_fd, 3, SEEK_CUR);
             bytes_read += 3;
+            bytes_read = offsetUpkeep(volume_fd, volume, root, bytes_read);
+
 
             read(volume_fd, (void *) &file_attributes, 2);
             bytes_read += 2;
+            bytes_read = offsetUpkeep(volume_fd, volume, root, bytes_read);
 
 
             lseek(volume_fd, 26, SEEK_CUR);
             bytes_read += 26;
+            bytes_read = offsetUpkeep(volume_fd, volume, root, bytes_read);
+
 
             lseek(volume_fd, 3, SEEK_CUR);
             read(volume_fd, (void *) &file_name_length, 1);
             bytes_read += 4;
+            bytes_read = offsetUpkeep(volume_fd, volume, root, bytes_read);
+
+            printf("Bytes read: %d\n", bytes_read);
+
+
 
             printf("File Name Length: %d\n", file_name_length);
 
             lseek(volume_fd, 16, SEEK_CUR);
             read(volume_fd, (void *) &file_first_cluster, 4);
             bytes_read += 20;
+            bytes_read = offsetUpkeep(volume_fd, volume, root, bytes_read);
+
 
 
             /* Need to save offset */
@@ -505,6 +532,8 @@ void commandList(int volume_fd, exfat *volume){
             printf("File first cluster: %d\n", file_first_cluster);
             lseek(volume_fd, 10, SEEK_CUR);
             bytes_read += 10;
+            bytes_read = offsetUpkeep(volume_fd, volume, root, bytes_read);
+
 
 
 
@@ -516,6 +545,8 @@ void commandList(int volume_fd, exfat *volume){
             read(volume_fd, (void *) temp_label, 30);
             file_name = unicode2ascii(temp_label, volume->label_length);
             bytes_read += 30;
+            bytes_read = offsetUpkeep(volume_fd, volume, root, bytes_read);
+
 
             file_attributes = file_attributes >> 4;
             if((file_attributes & 1) == 1){
@@ -523,33 +554,50 @@ void commandList(int volume_fd, exfat *volume){
             }
             else {
                 printf("File: ");
-                if(bytes_read >= clustersToBytes(volume,1)){
-
-                    offset =  ((volume->cluster_heap_offset * sectorsToBytes(volume, 1)) +
-                            ((0x1<< volume->sector_size)*(0x1 << volume->cluster_size))*(getData(root)-2));
-                    lseek(volume_fd, offset, SEEK_SET);
-
-//                    uint8_t test;
+//                if(bytes_read >= clustersToBytes(volume,1)){
 //
-//                    read(volume_fd, (void *) &test, 1);
+//                    offset =  ((volume->cluster_heap_offset * sectorsToBytes(volume, 1)) +
+//                            ((0x1<< volume->sector_size)*(0x1 << volume->cluster_size))*(getData(root)-2));
+//                    lseek(volume_fd, offset, SEEK_SET);
 //
-//                    printf("Test Result: %d\n", test);
+////                    uint8_t test;
+////
+////                    read(volume_fd, (void *) &test, 1);
+////
+////                    printf("Test Result: %d\n", test);
+////
+////
 //
 //
-
-
-                }
-                printf("Bytes read: %d\n", bytes_read);
+//                }
+//                printf("Bytes read: %d\n", bytes_read);
 
             }
             printf("%s\n", file_name);
             free(temp_label);
 
-
         }
+//        else if(volume->entry_type == 0xc0){
+//            printf("Stream extension\n");
+//
+//
+//            lseek(volume_fd, 2, SEEK_CUR);
+//            read(volume_fd, (void *) &file_name_length, 1);
+//            bytes_read += 3;
+//            bytes_read = offsetUpkeep(volume_fd, volume, root, bytes_read);
+//
+//
+//
+//        }
+//        else if(volume->entry_type == 0xc1){
+//            printf("File Name\n");
+//
+//        }
         else{
             lseek(volume_fd, 31, SEEK_CUR);
             bytes_read += 31;
+            bytes_read = offsetUpkeep(volume_fd, volume, root, bytes_read);
+
         }
 
 
