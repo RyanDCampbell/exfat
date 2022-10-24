@@ -1,10 +1,6 @@
 
 /*-----------------------------------------
 // NAME: Ryan Campbell
-// STUDENT NUMBER: 7874398
-// COURSE: COMP 3430, SECTION: A01
-// INSTRUCTOR: Franklin Bristow
-// ASSIGNMENT: assignment #4
 //
 // REMARKS: Implement a File System reader
 // that supports the exfat file system. Implements
@@ -50,11 +46,10 @@ typedef struct EXFAT{
     uint8_t  entry_type;
 
     /* This is the index of the first cluster of the cluster chain
- * as the FAT describes (Look at the corresponding entry in the FAT,
- * to build the cluster chain) */
+     * as the FAT describes (Look at the corresponding entry in the FAT,
+     * to build the cluster chain) */
     uint32_t first_bitmap_cluster;
     uint64_t first_bitmap_cluster_data_length;
-
 
     /* bitmap of free clusters */
 
@@ -63,10 +58,8 @@ typedef struct EXFAT{
     char *ascii_volume_label;
     unsigned long free_space;
 
-
 }exfat;
 #pragma pack(pop)
-
 
 /*------------------------------------------------------
 // sectorsToBytes
@@ -108,10 +101,6 @@ int clustersToBytes(exfat *volume, int number_of_clusters){
     return ((0x1<< volume->sector_size)*(0x1 << volume->cluster_size) * number_of_clusters);
 }
 
-
-
-
-
 /**
  * Convert a Unicode-formatted string containing only ASCII characters
  * into a regular ASCII-formatted string (16 bit chars to 8 bit
@@ -152,7 +141,6 @@ static char *unicode2ascii( uint16_t *unicode_string, uint8_t length )
             ascii_string[length] = '\0';
         }
     }
-
     return ascii_string;
 }
 
@@ -193,10 +181,7 @@ void displayMetadata(exfat *volume){
     printf("Entry Type: %d\n", volume->entry_type);
 
     printf("********************************************\n\n");
-
 }
-
-
 
 /* Calculate the Offset to the Cluster Heap + the Offset of the Root Cluster */
 unsigned long rootDirectory(exfat *volume_data){
@@ -234,7 +219,6 @@ unsigned int numUnsetBits(uint32_t value){
     return result;
 }
 
-
 /*------------------------------------------------------
 // buildClusterChain
 //
@@ -252,8 +236,8 @@ unsigned int numUnsetBits(uint32_t value){
 //------------------------------------------------------*/
 List *buildFatClusterChain(int volume_fd, exfat *volume, unsigned int cluster_heap_index){
 
-   // printf("\nBuilding cluster chain...\n");
-    //printf("Cluster heap index: %u\n", cluster_heap_index);
+    // printf("\nBuilding cluster chain...\n");
+    // printf("Cluster heap index: %u\n", cluster_heap_index);
 
     List *cluster_chain = malloc(sizeof (List));
     insert(cluster_chain, cluster_heap_index);
@@ -289,12 +273,10 @@ List *buildFatClusterChain(int volume_fd, exfat *volume, unsigned int cluster_he
     return cluster_chain;
 }
 
-
-
 List *buildClusterChain(int volume_fd, exfat *volume, unsigned int cluster_heap_index){
 
     // printf("\nBuilding cluster chain...\n");
-    //printf("Cluster heap index: %u\n", cluster_heap_index);
+    // printf("Cluster heap index: %u\n", cluster_heap_index);
 
     List *cluster_chain = malloc(sizeof (List));
     insert(cluster_chain, cluster_heap_index);
@@ -383,25 +365,8 @@ void calculateFreeSpace(int volume_fd, exfat *volume, List *bitmap_cluster_chain
     }
 
     volume->free_space = total_unset_bits * clustersToBytes(volume, 1)/KILOBYTE_SIZE;
-
     printf("\nFree Space KB: %lu\n\n", volume->free_space);
-
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /*------------------------------------------------------
 // commandInfo
@@ -425,14 +390,7 @@ void commandInfo(exfat *volume){
 
 }
 
-void commandGet(exfat *volume){
-
-
-
-}
-
-
-
+void commandGet(exfat *volume){ }
 
 unsigned int offsetUpkeep(int volume_fd, exfat *volume, List *cluster_chain, unsigned int bytes_read){
 
@@ -448,8 +406,6 @@ unsigned int offsetUpkeep(int volume_fd, exfat *volume, List *cluster_chain, uns
     }
     return bytes;
 }
-
-
 
 void commandList(int volume_fd, exfat *volume){
 
@@ -467,7 +423,6 @@ void commandList(int volume_fd, exfat *volume){
 
     List *root = buildClusterChain(volume_fd, volume, volume->root_cluster);
     //printList(root);
-
 
     getData(root);  /* Pop the first cluster because we are already in it and won't be needing it */
 
@@ -489,50 +444,27 @@ void commandList(int volume_fd, exfat *volume){
             bytes_read += 3;
             bytes_read = offsetUpkeep(volume_fd, volume, root, bytes_read);
 
-
             read(volume_fd, (void *) &file_attributes, 2);
             bytes_read += 2;
             bytes_read = offsetUpkeep(volume_fd, volume, root, bytes_read);
 
-
             lseek(volume_fd, 26, SEEK_CUR);
             bytes_read += 26;
             bytes_read = offsetUpkeep(volume_fd, volume, root, bytes_read);
-
 
             lseek(volume_fd, 3, SEEK_CUR);
             read(volume_fd, (void *) &file_name_length, 1);
             bytes_read += 4;
             bytes_read = offsetUpkeep(volume_fd, volume, root, bytes_read);
 
-           // printf("Bytes read: %d\n", bytes_read);
-
-
-            //printf("File Name Length: %d\n", file_name_length);
-
             lseek(volume_fd, 16, SEEK_CUR);
             read(volume_fd, (void *) &file_first_cluster, 4);
             bytes_read += 20;
             bytes_read = offsetUpkeep(volume_fd, volume, root, bytes_read);
 
-
-
-            /* Need to save offset */
-
-
-            //                List *file_cluster_chain = buildClusterChain(volume_fd, volume, file_first_cluster-2);
-            //                printList(file_cluster_chain);
-
-
-            /* Need to restore offset */
-
-
-           // printf("File first cluster: %d\n", file_first_cluster);
             lseek(volume_fd, 10, SEEK_CUR);
             bytes_read += 10;
             bytes_read = offsetUpkeep(volume_fd, volume, root, bytes_read);
-
-
 
             /* Read in the unicode volume label, storing it in a temporary label.  Convert to unicode, update the exfat struct label and free the temp label */
             temp_label = malloc(sizeof (char)*31); /* Set to 31 due to 30 readable chars and + 1 for NULL terminator */
@@ -557,21 +489,18 @@ void commandList(int volume_fd, exfat *volume){
 
         }
         else if(volume->entry_type == 0xc0){
-          //  printf("Stream extension\n");
-
+            // printf("Stream extension\n");
             lseek(volume_fd, 2, SEEK_CUR);
             read(volume_fd, (void *) &file_name_length, 1);
             bytes_read += 3;
             bytes_read = offsetUpkeep(volume_fd, volume, root, bytes_read);
             lseek(volume_fd, 28, SEEK_CUR);
-           // printf("File Name Length: %d\n", file_name_length);
-
+            // printf("File Name Length: %d\n", file_name_length);
         }
         else if(volume->entry_type == 0xc1){
            // printf("File Name\n");
 
             lseek(volume_fd, 1,SEEK_CUR);
-
 
             /* Read in the unicode volume label, storing it in a temporary label.  Convert to unicode, update the exfat struct label and free the temp label */
             temp_label = malloc(sizeof (char)*31); /* Set to 31 due to 30 readable chars and + 1 for NULL terminator */
@@ -581,7 +510,6 @@ void commandList(int volume_fd, exfat *volume){
             file_name = unicode2ascii(temp_label, volume->label_length);
             bytes_read += ENTRY_SIZE -2;
             bytes_read = offsetUpkeep(volume_fd, volume, root, bytes_read);
-
 
             file_attributes = file_attributes >> 4;
             if((file_attributes & 1) == 1){
@@ -593,31 +521,14 @@ void commandList(int volume_fd, exfat *volume){
             }
             printf("%s\n", file_name);
             free(temp_label);
-
-
-
         }
         else{
             lseek(volume_fd, ENTRY_SIZE -1, SEEK_CUR);
             bytes_read += ENTRY_SIZE -1;
             bytes_read = offsetUpkeep(volume_fd, volume, root, bytes_read);
-
         }
-
-
     }
-
-   // printf("Bytes read: %d\n", bytes_read);
-
-
-    //List *text = buildClusterChain(volume_fd, volume ,7976);
-
 }
-
-
-
-
-
 
 /*------------------------------------------------------
 // readVolume
@@ -674,7 +585,6 @@ exfat *readVolume(int volume_fd){
         read(volume_fd, (void *) &volume->cluster_size, 1);
         read(volume_fd, (void *) &volume->number_of_fats, 1);
 
-
         /* Calculate the Offset to the Cluster Heap + the Offset of the Root Cluster */
         offset = rootDirectory(volume);
         lseek(volume_fd, (long)offset, SEEK_SET);
@@ -707,15 +617,9 @@ exfat *readVolume(int volume_fd){
 
         /* Calculate and update the exfat struct volume to contain the number of KB free */
         calculateFreeSpace(volume_fd, volume, bitmap_cluster_chain);
-
     }
-
     return volume;
 }
-
-
-
-
 
 /*------------------------------------------------------
 // main
